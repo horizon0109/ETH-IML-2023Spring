@@ -25,6 +25,13 @@ def transform_data(X):
     """
     X_transformed = np.zeros((700, 21))
     # TODO: Enter your code here
+    for i in range(5):
+        X_transformed[:, i] = X[:, i]
+        X_transformed[:, i + 5] = np.square(X[:, i])
+        X_transformed[:, i + 10] = np.exp(X[:, i])
+        X_transformed[:, i + 15] = np.cos(X[:, i])
+    X_transformed[:, 20] = 1
+
     assert X_transformed.shape == (700, 21)
     return X_transformed
 
@@ -46,6 +53,7 @@ def fit(X, y):
     w = np.zeros((21,))
     X_transformed = transform_data(X)
     # TODO: Enter your code here
+    w = np.linalg.inv(X_transformed.T @ X_transformed) @ X_transformed.T @ y
     assert w.shape == (21,)
     return w
 
