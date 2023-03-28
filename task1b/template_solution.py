@@ -53,7 +53,8 @@ def fit(X, y):
     w = np.zeros((21,))
     X_transformed = transform_data(X)
     # TODO: Enter your code here
-    w = np.linalg.inv(X_transformed.T @ X_transformed) @ X_transformed.T @ y
+    lam = 0.005
+    w = np.linalg.inv(X_transformed.T @ X_transformed + lam * np.eye(21)) @ X_transformed.T @ y
     assert w.shape == (21,)
     return w
 
