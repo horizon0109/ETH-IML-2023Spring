@@ -3,6 +3,8 @@
 # First, we import necessary libraries:
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+import miceforest as mf
 
 def data_loading():
     """
@@ -32,12 +34,25 @@ def data_loading():
     print(test_df.shape)
     print(test_df.head(2))
 
-    # Dummy initialization of the X_train, X_test and y_train   
-    X_train = np.zeros_like(train_df.drop(['price_CHF'],axis=1))
+    # Dummy initialization of the X_train, X_test and y_train
+
+    # forgot season column??? have changed
+    X_train = np.zeros_like(train_df.drop(['season', 'price_CHF'],axis=1))
     y_train = np.zeros_like(train_df['price_CHF'])
-    X_test = np.zeros_like(test_df)
+    X_test = np.zeros_like(test_df.drop(['season'],axis=1))
 
     # TODO: Perform data preprocessing, imputation and extract X_train, y_train and X_test
+    train = train_df.drop(['season'],axis=1)
+    test = test_df.drop(['season'],axis=1)
+    kds_train = mf.ImputationKernel(train, save_all_iterations=True, random_state=1991)
+    kds_test = mf.ImputationKernel(test, save_all_iterations=True, random_state=1991)
+    kds_train.mice(5)
+    kds_test.mice(5)
+    train_complete = kds_train.complete_data()
+    test_complete = kds_test.complete_data()
+    X_train = train_complete.drop(['price_CHF'],axis=1)
+    y_train = train_complete['price_CHF']
+    X_test = test_complete
 
     assert (X_train.shape[1] == X_test.shape[1]) and (X_train.shape[0] == y_train.shape[0]) and (X_test.shape[0] == 100), "Invalid data shape"
     return X_train, y_train, X_test
@@ -59,7 +74,9 @@ def modeling_and_prediction(X_train, y_train, X_test):
 
     y_pred=np.zeros(X_test.shape[0])
     #TODO: Define the model and fit it using training data. Then, use test data to make predictions
-
+    model = RandomForestRegressor()
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
     assert y_pred.shape == (100,), "Invalid data shape"
     return y_pred
 
