@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import miceforest as mf
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import GridSearchCV
 
 
 def data_loading():
@@ -76,7 +77,8 @@ def modeling_and_prediction(X_train, y_train, X_test):
 
     y_pred=np.zeros(X_test.shape[0])
     #TODO: Define the model and fit it using training data. Then, use test data to make predictions
-    model = RandomForestRegressor()
+    model = RandomForestRegressor(n_estimators=300, max_depth=8, max_features='auto')
+
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     assert y_pred.shape == (100,), "Invalid data shape"
