@@ -53,6 +53,7 @@ class Net(nn.Module):
         """
         # TODO: Implement the forward pass of the model, in accordance with the architecture 
         # defined in the constructor.
+
         return x
     
 def make_feature_extractor(x, y, batch_size=256, eval_size=1000):
