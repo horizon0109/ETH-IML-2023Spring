@@ -8,7 +8,11 @@ import torch.nn as nn
 
 from sklearn.model_selection import train_test_split
 from sklearn.base import BaseEstimator, TransformerMixin
-
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import Ridge
 
 
 def load_data():
@@ -23,39 +27,41 @@ def load_data():
             y_train: np.ndarray, the labels of the training set
             x_test: np.ndarray, the features of the test set
     """
-    x_pretrain = pd.read_csv("public/pretrain_features.csv.zip", index_col="Id", compression='zip').drop("smiles", axis=1).to_numpy()
-    y_pretrain = pd.read_csv("public/pretrain_labels.csv.zip", index_col="Id", compression='zip').to_numpy().squeeze(-1)
-    x_train = pd.read_csv("public/train_features.csv.zip", index_col="Id", compression='zip').drop("smiles", axis=1).to_numpy()
-    y_train = pd.read_csv("public/train_labels.csv.zip", index_col="Id", compression='zip').to_numpy().squeeze(-1)
-    x_test = pd.read_csv("public/test_features.csv.zip", index_col="Id", compression='zip').drop("smiles", axis=1)
+    x_pretrain = pd.read_csv("pretrain_features.csv.zip", index_col="Id", compression='zip').drop("smiles", axis=1).to_numpy()
+    y_pretrain = pd.read_csv("pretrain_labels.csv.zip", index_col="Id", compression='zip').to_numpy().squeeze(-1)
+    x_train = pd.read_csv("train_features.csv.zip", index_col="Id", compression='zip').drop("smiles", axis=1).to_numpy()
+    y_train = pd.read_csv("train_labels.csv.zip", index_col="Id", compression='zip').to_numpy().squeeze(-1)
+    x_test = pd.read_csv("test_features.csv.zip", index_col="Id", compression='zip').drop("smiles", axis=1)
     return x_pretrain, y_pretrain, x_train, y_train, x_test
 
 class Net(nn.Module):
     """
     The model class, which defines our feature extractor used in pretraining.
     """
-    def __init__(self):
+    def __init__(self, in_features):
         """
         The constructor of the model.
         """
         super().__init__()
         # TODO: Define the architecture of the model. It should be able to be trained on pretraing data 
         # and then used to extract features from the training and test data.
+        # encoder
+        self.encoder = nn.Sequential(
+            nn.Linear(in_features, 1024),
+            nn.ReLU()
+        )
 
+        # fully connected layer for pretrain task
+        self.fc = nn.Sequential(
+            nn.Linear(1024, 1)
+        )
 
     def forward(self, x):
-        """
-        The forward pass of the model.
+      x = self.encoder(x)
+      x = self.fc(x)
+      return x
 
-        input: x: torch.Tensor, the input to the model
 
-        output: x: torch.Tensor, the output of the model
-        """
-        # TODO: Implement the forward pass of the model, in accordance with the architecture 
-        # defined in the constructor.
-
-        return x
-    
 def make_feature_extractor(x, y, batch_size=256, eval_size=1000):
     """
     This function trains the feature extractor on the pretraining data and returns a function which
@@ -65,7 +71,7 @@ def make_feature_extractor(x, y, batch_size=256, eval_size=1000):
               y: np.ndarray, the labels of the pretraining set
                 batch_size: int, the batch size used for training
                 eval_size: int, the size of the validation set
-            
+
     output: make_features: function, a function which can be used to extract features from the training and test data
     """
     # Pretraining data loading
@@ -74,18 +80,59 @@ def make_feature_extractor(x, y, batch_size=256, eval_size=1000):
     x_tr, x_val = torch.tensor(x_tr, dtype=torch.float), torch.tensor(x_val, dtype=torch.float)
     y_tr, y_val = torch.tensor(y_tr, dtype=torch.float), torch.tensor(y_val, dtype=torch.float)
 
-    # model declaration
-    model = Net()
+    # Model declaration
+    model = Net(in_features)
     model.train()
-    
-    # TODO: Implement the training loop. The model should be trained on the pretraining data. Use validation set 
-    # to monitor the loss.
 
+    # Define the loss function and optimizer
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
+    # Training loop
+    for epoch in range(5):
+        # Iterate over the training dataset
+        for i in range(0, len(x_tr), batch_size):
+            inputs = x_tr[i:i + batch_size]
+            targets = y_tr[i:i + batch_size]
+
+            # Zero the gradients
+            optimizer.zero_grad()
+            # Forward pass
+            outputs = model.forward(inputs).flatten()
+
+            # Compute the loss
+            loss = criterion(outputs, targets)
+
+            # Backward pass
+            loss.backward()
+
+            # Update the weights
+            optimizer.step()
+
+        # Compute validation loss
+        with torch.no_grad():
+            model.eval()
+            for i in range(0, len(x_val), batch_size):
+                inputs = x_val[i:i + batch_size]
+                targets = y_val[i:i + batch_size]
+
+                # Zero the gradients
+                optimizer.zero_grad()
+                # Forward pass
+                outputs = model.forward(inputs).flatten()
+
+                # Compute the loss
+                val_loss = criterion(outputs, targets)
+
+                # Update the weights
+                optimizer.step()
+
+        # Print the loss for this epoch
+        print(f"Epoch {epoch + 1}/{5}, Loss: {loss.item()}, Val Loss: {val_loss.item()}")
 
     def make_features(x):
         """
-        This function extracts features from the training and test data, used in the actual pipeline 
+        This function extracts features from the training and test data, used in the actual pipeline
         after the pretraining.
 
         input: x: np.ndarray, the features of the training or test set
@@ -94,8 +141,11 @@ def make_feature_extractor(x, y, batch_size=256, eval_size=1000):
         further in the pipeline
         """
         model.eval()
-        # TODO: Implement the feature extraction, a part of a pretrained model used later in the pipeline.
-        return x
+        # Convert input to torch tensor
+        x = torch.tensor(x, dtype=torch.float)
+        # Extract features using the model's encoder
+        features = model.encoder(x).detach().numpy()
+        return features
 
     return make_features
 
@@ -136,7 +186,8 @@ def get_regression_model():
     """
     # TODO: Implement the regression model. It should be able to be trained on the features extracted
     # by the feature extractor.
-    model = None
+    model = LinearRegression()
+    #model = RandomForestRegressor(n_estimators=100, max_depth=10)
     return model
 
 # Main function. You don't have to change this
@@ -152,11 +203,20 @@ if __name__ == '__main__':
     # regression model
     regression_model = get_regression_model()
 
-    y_pred = np.zeros(x_test.shape[0])
+
     # TODO: Implement the pipeline. It should contain feature extraction and regression. You can optionally
     # use other sklearn tools, such as StandardScaler, FunctionTransformer, etc.
-
+    pipeline = Pipeline([
+        ("pretrain", PretrainedFeatureClass(feature_extractor="pretrain")),
+        ("regression", regression_model)
+    ])
+    x_train = torch.tensor(x_train, dtype=torch.float)
+    y_train = torch.tensor(y_train, dtype=torch.float)
+    pipeline.fit(x_train, y_train)
+    x_test_tensor = torch.tensor(x_test.values, dtype=torch.float)
+    y_pred = pipeline.predict(x_test_tensor)
     assert y_pred.shape == (x_test.shape[0],)
+
     y_pred = pd.DataFrame({"y": y_pred}, index=x_test.index)
     y_pred.to_csv("results.csv", index_label="Id")
     print("Predictions saved, all done!")
